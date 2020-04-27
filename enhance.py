@@ -2,6 +2,7 @@
 import numpy as np
 import time
 from optparse import OptionParser
+import matplotlib.pyplot as plt
 import cv2
 
 ####################
@@ -93,7 +94,10 @@ def main():
     parser.add_option("-o", "--outdir",
             help = "Path to directory to store processed output.")
     parser.add_option("-s", "--show",
-            help = "Show each enhanced image.",
+            help = "Show each enha image.",
+            default = False, action = "store_true")
+    parser.add_option("-m", "--match",
+            help = "Match features across image pairs.",
             default = False, action = "store_true")
     (options, args) = parser.parse_args()
     if options.files is None:
@@ -111,42 +115,155 @@ def main():
     sift = cv2.xfeatures2d.SIFT_create()
     surf = cv2.xfeatures2d.SURF_create()
     orb = cv2.ORB_create(nfeatures=1500)
+    # Initialize BFMatcher object
+    bf_sift = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
+    bf_orb = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
 
+    origPrev = None
+    enhaPrev = None
     # Process each image
     for imgPath in imgPaths:
         outPath = options.outdir + "/" + imgPath.split("/")[-1]
         orig = cv2.imread(imgPath)
         
         # Enhance
-        enhanced = enhance(orig, color_balance = "white")
+        enha = enhance(orig, color_balance = "white")
 
         # Extract features
-        keys_sift_orig, descriptors = sift.detectAndCompute(orig, None)
-        keys_surf_orig, descriptors = surf.detectAndCompute(orig, None)
-        keys_orb_orig, descriptors = orb.detectAndCompute(orig, None)
-        keys_sift_enhanced, descriptors = sift.detectAndCompute(enhanced, None)
-        keys_surf_enhanced, descriptors = surf.detectAndCompute(enhanced, None)
-        keys_orb_enhanced, descriptors = orb.detectAndCompute(enhanced, None)
-
+        keys_sift_orig, desc_sift_orig = sift.detectAndCompute(orig, None)
+        keys_surf_orig, desc_surf_orig = surf.detectAndCompute(orig, None)
+        keys_orb_orig, desc_orb_orig = orb.detectAndCompute(orig, None)
+        keys_sift_enha, desc_sift_enha = sift.detectAndCompute(enha, None)
+        keys_surf_enha, desc_surf_enha = surf.detectAndCompute(enha, None)
+        keys_orb_enha, desc_orb_enha = orb.detectAndCompute(enha, None)
 
         # Report
         print("Image: {}".format(imgPath))
         print("   Original features: {} SIFT, {} SURF, {} ORB".format(
              len(keys_sift_orig), len(keys_surf_orig), len(keys_orb_orig)))
-        print("   Enhanced features: {} SIFT, {} SURF, {} ORB".format(
-             len(keys_sift_enhanced), len(keys_surf_enhanced), len(keys_orb_enhanced)))
+        print("   Enha features: {} SIFT, {} SURF, {} ORB".format(
+             len(keys_sift_enha), len(keys_surf_enha), len(keys_orb_enha)))
+
+
+        # Write processed image
+        cv2.imwrite(outPath, enha)
+
+        # Test feature matching
+        if options.match:
+            if origPrev is not None:
+                # SIFT matches
+                matchesOrig_sift = bf_sift.match(desc_sift_origPrev, desc_sift_orig)
+                matchesEnha_sift = bf_sift.match(desc_sift_enhaPrev, desc_sift_enha)
+                # Sort them in the order of their distance.
+                matchesOrig_sift = sorted(matchesOrig_sift, key = lambda x:x.distance)
+                matchesEnha_sift = sorted(matchesEnha_sift, key = lambda x:x.distance)
+                # Apply match test
+                matchesOrigGood_sift = []
+                for i, m in enumerate(matchesOrig_sift):
+                    if i < len(matchesOrig_sift) - 1 and m.distance < 0.97 * matchesOrig_sift[i + 1].distance:
+                        matchesOrigGood_sift.append(m)
+                matchesOrig_sift = matchesOrigGood_sift
+                matchesEnhaGood_sift = []
+                for i, m in enumerate(matchesEnha_sift):
+                    if i < len(matchesEnha_sift) - 1 and m.distance < 0.97 * matchesEnha_sift[i + 1].distance:
+                        matchesEnhaGood_sift.append(m)
+                matchesEnha_sift = matchesEnhaGood_sift
+
+                # SURF matches
+                matchesOrig_surf = bf_sift.match(desc_surf_origPrev, desc_surf_orig)
+                matchesEnha_surf = bf_sift.match(desc_surf_enhaPrev, desc_surf_enha)
+                # Sort them in the order of their distance.
+                matchesOrig_surf = sorted(matchesOrig_surf, key = lambda x:x.distance)
+                matchesEnha_surf = sorted(matchesEnha_surf, key = lambda x:x.distance)
+                # Apply match test
+                matchesOrigGood_surf = []
+                for i, m in enumerate(matchesOrig_surf):
+                    if i < len(matchesOrig_surf) - 1 and m.distance < 0.97 * matchesOrig_surf[i + 1].distance:
+                        matchesOrigGood_surf.append(m)
+                matchesOrig_surf = matchesOrigGood_surf
+                matchesEnhaGood_surf = []
+                for i, m in enumerate(matchesEnha_surf):
+                    if i < len(matchesEnha_surf) - 1 and m.distance < 0.97 * matchesEnha_surf[i + 1].distance:
+                        matchesEnhaGood_surf.append(m)
+                matchesEnha_surf = matchesEnhaGood_surf
+
+                # ORB matches
+                matchesOrig = bf_orb.match(desc_orb_origPrev, desc_orb_orig)
+                matchesEnha = bf_orb.match(desc_orb_enhaPrev, desc_orb_enha)
+                # Sort them in the order of their distance.
+                matchesOrig = sorted(matchesOrig, key = lambda x:x.distance)
+                matchesEnha = sorted(matchesEnha, key = lambda x:x.distance)
+                # Apply match test
+                matchesOrigGood = []
+                for i, m in enumerate(matchesOrig):
+                    if i < len(matchesOrig) - 1 and m.distance < 0.97 * matchesOrig[i + 1].distance:
+                        matchesOrigGood.append(m)
+                matchesOrig = matchesOrigGood
+                matchesEnhaGood = []
+                for i, m in enumerate(matchesEnha):
+                    if i < len(matchesEnha) - 1 and m.distance < 0.97 * matchesEnha[i + 1].distance:
+                        matchesEnhaGood.append(m)
+                matchesEnha = matchesEnhaGood
+
+                print("   Original matches: {} SIFT, {} SURF, {} ORB".format(
+                    len(matchesOrig_sift), len(matchesOrig_surf), len(matchesOrig)))
+                print("   Enha matches: {} SIFT, {} SURF, {} ORB".format(
+                    len(matchesEnha_sift), len(matchesEnha_surf), len(matchesEnha)))
 
 
         # Show before and after processing
-        if options.show:
-            origKeys = cv2.drawKeypoints(orig, keys_surf_orig, None)
-            enhancedKeys = cv2.drawKeypoints(enhanced, keys_surf_enhanced, None)
-            cv2.imshow('Comparison', np.hstack((origKeys, enhancedKeys)))
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
+        if options.show and origPrev is not None:
+            fig, ax = plt.subplots(figsize=(20, 10))
 
-        # Write processed image
-        cv2.imwrite(outPath, enhanced)
+            origKeys_sift = cv2.drawKeypoints(orig, keys_sift_orig, None)
+            enhaKeys_sift = cv2.drawKeypoints(enha, keys_sift_enha, None)
+            origKeys_surf = cv2.drawKeypoints(orig, keys_surf_orig, None)
+            enhaKeys_surf = cv2.drawKeypoints(enha, keys_surf_enha, None)
+            origKeys_orb = cv2.drawKeypoints(orig, keys_orb_orig, None)
+            enhaKeys_orb = cv2.drawKeypoints(enha, keys_orb_enha, None)
+            
+            if options.match:
+                matchesOrigImg_sift = cv2.drawMatches(origPrev, keys_sift_origPrev, 
+                        orig, keys_sift_orig, matchesOrig_sift, None, flags = 2)
+                matchesEnhaImg_sift = cv2.drawMatches(enhaPrev, keys_sift_enhaPrev, 
+                        enha, keys_sift_enha, matchesEnha_sift, None, flags = 2)
+                matchesOrigImg_surf = cv2.drawMatches(origPrev, keys_surf_origPrev, 
+                        orig, keys_surf_orig, matchesOrig_surf, None, flags = 2)
+                matchesEnhaImg_surf = cv2.drawMatches(enhaPrev, keys_surf_enhaPrev, 
+                        enha, keys_sift_enha, matchesEnha_sift, None, flags = 2)
+                matchesOrigImg_orb = cv2.drawMatches(origPrev, keys_orb_origPrev, 
+                        orig, keys_orb_orig, matchesOrig, None, flags = 2)
+                matchesEnhaImg_orb = cv2.drawMatches(enhaPrev, keys_orb_enhaPrev, 
+                        enha, keys_orb_enha, matchesEnha, None, flags = 2)
+
+                ax.imshow(np.vstack(( \
+                    np.hstack((origKeys_sift, enhaKeys_sift, matchesOrigImg_sift, matchesEnhaImg_sift)),
+                    np.hstack((origKeys_surf, enhaKeys_surf, matchesOrigImg_surf, matchesEnhaImg_surf)),
+                    np.hstack((origKeys_orb, enhaKeys_orb, matchesOrigImg_orb, matchesEnhaImg_orb)))), 
+                    interpolation = 'nearest')
+
+                
+            ax.set_aspect('auto')
+            plt.show()
+            #cv2.waitKey(0)
+            #cv2.destroyAllWindows()
+
+
+        # Set current to previous
+        origPrev = orig.copy()
+        enhaPrev = enha.copy()
+        keys_sift_origPrev = keys_sift_orig 
+        keys_surf_origPrev = keys_surf_orig
+        keys_orb_origPrev = keys_orb_orig
+        keys_sift_enhaPrev = keys_sift_enha
+        keys_surf_enhaPrev = keys_surf_enha
+        keys_orb_enhaPrev = keys_orb_enha
+        desc_sift_origPrev = desc_sift_orig 
+        desc_surf_origPrev = desc_surf_orig
+        desc_orb_origPrev = desc_orb_orig
+        desc_sift_enhaPrev = desc_sift_enha
+        desc_surf_enhaPrev = desc_surf_enha
+        desc_orb_enhaPrev = desc_orb_enha
 
 if __name__ == '__main__':
     main()
